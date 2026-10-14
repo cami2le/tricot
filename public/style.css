@@ -26,7 +26,7 @@ button,.pill{font:inherit;cursor:pointer;touch-action:manipulation}
 .alerte{background:var(--violet);color:var(--vtexte);display:flex;gap:1rem;align-items:center;justify-content:space-between}
 .alerte .pill{background:var(--vtexte);color:var(--violet)}
 .boutons{display:flex;gap:1.25rem}
-.rond{width:6.5rem;height:6.5rem;border:0;border-radius:50%;font-size:3.5rem;line-height:1;background:var(--violet);color:var(--vtexte)}
+.rond{position:relative;overflow:hidden;width:6.5rem;height:6.5rem;border:0;border-radius:50%;font-size:3.5rem;line-height:1;background:var(--violet);color:var(--vtexte)}
 .rond.moins{background:var(--clair);color:var(--texte)}
 .rond:active{transform:scale(.94)}
 ul.etapes{list-style:none;padding:0;margin:0 0 1rem}
@@ -37,7 +37,7 @@ label{display:block;margin:1rem 0 .3rem;opacity:.75}
 label.pill{margin:0;opacity:1}
 label.ligne{display:flex;gap:.8rem;align-items:center;font-size:1.1rem;opacity:1;margin-top:1.5rem}
 label.ligne input{width:1.5rem;height:1.5rem;accent-color:var(--violet)}
-input[type=text],input[type=password],input[type=number],textarea{width:100%;font:inherit;font-size:1.05rem;padding:.7rem;border-radius:.7rem;border:2px solid var(--clair);background:var(--carte);color:var(--texte)}
+input[type=text],input[type=password],input[type=number],select,textarea{width:100%;font:inherit;font-size:1.05rem;padding:.7rem;border-radius:.7rem;border:2px solid var(--clair);background:var(--carte);color:var(--texte)}
 textarea{min-height:7rem}
 .row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
 .vide{text-align:center;opacity:.7;margin-top:3rem}
@@ -45,3 +45,22 @@ textarea{min-height:7rem}
 #err{color:var(--err);min-height:1.4em;margin:.6rem 0 0}
 :focus-visible{outline:3px solid var(--texte);outline-offset:3px}
 @media(prefers-reduced-motion:reduce){.rond:active{transform:none}}
+.onde{position:absolute;inset:0;margin:auto;width:100%;aspect-ratio:1;border-radius:50%;background:currentColor;opacity:.35;pointer-events:none;animation:onde .6s ease-out}
+@keyframes onde{from{transform:scale(0);opacity:.4}to{transform:scale(2.2);opacity:0}}
+.pouf{animation:pouf .25s ease-out}
+@keyframes pouf{50%{transform:scale(1.08)}}
+.filtres{margin-bottom:1rem}.filtres .pill{padding:.4rem .9rem;font-size:.95rem}
+.extras{width:100%;text-align:center}
+.extra{display:flex;align-items:center;gap:.6rem;background:var(--carte);border-radius:1rem;padding:.6rem .9rem;margin-bottom:.6rem;text-align:left}
+.extra b{flex:1;font-weight:normal}
+.extra span{min-width:2.2rem;text-align:center;font-size:1.5rem}
+.extra .pill{position:relative;overflow:hidden;padding:.4rem 1rem}
+.extra .x{background:none;border:0;color:var(--texte);opacity:.5;font-size:1.5rem}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.stats div{background:var(--carte);border-radius:1rem;padding:.8rem 1rem}
+.stats b{display:block;font-size:1.9rem;font-weight:normal;color:var(--violet)}
+.graphe{display:flex;align-items:flex-end;gap:.25rem;height:9rem;margin-top:.8rem}
+.graphe div{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}
+.graphe i{display:block;width:100%;background:var(--violet);border-radius:.3rem .3rem 0 0;min-height:2px}
+.graphe small{font-size:.7rem;opacity:.7;margin-top:.2rem}
+@media(prefers-reduced-motion:reduce){.onde,.pouf{animation:none}}

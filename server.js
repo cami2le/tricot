@@ -14,8 +14,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects(
   pattern_name TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP)`);
 const have = db.prepare('PRAGMA table_info(projects)').all().map(c => c.name);
-for (const [c, d] of [['user_id', 'INTEGER'], ['objectif', 'INTEGER NOT NULL DEFAULT 0'], ['steps', "TEXT NOT NULL DEFAULT '[]'"]])
+for (const [c, d] of [['user_id', 'INTEGER'], ['objectif', 'INTEGER NOT NULL DEFAULT 0'], ['steps', "TEXT NOT NULL DEFAULT '[]'"],
+  ['statut', "TEXT NOT NULL DEFAULT 'en_cours'"], ['extras', 'INTEGER NOT NULL DEFAULT 0'], ['compteurs', "TEXT NOT NULL DEFAULT '[]'"]])
   if (!have.includes(c)) db.exec(`ALTER TABLE projects ADD COLUMN ${c} ${d}`);
+db.exec('CREATE TABLE IF NOT EXISTS activity(project_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(project_id, day))');
 db.exec(`CREATE TABLE IF NOT EXISTS users(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -51,7 +53,7 @@ const noUsers = () => !db.prepare('SELECT 1 FROM users').get();
 const file = id => path.join(DATA, 'patrons', id + '.pdf');
 const find = (id, uid) => db.prepare('SELECT * FROM projects WHERE id=? AND user_id=?').get(id, uid);
 const mine = q => find(q.pid, q.user.id);
-const out = p => ({ ...p, steps: JSON.parse(p.steps) });
+const out = p => ({ ...p, steps: JSON.parse(p.steps), compteurs: JSON.parse(p.compteurs) });
 
 const app = express();
 app.use(express.json());
@@ -101,7 +103,7 @@ app.post('/api/logout', (q, r) => {
 app.use('/api/projects', (q, r, next) => { q.user = currentUser(q); q.user ? next() : r.sendStatus(401); });
 
 app.get('/api/projects', (q, r) =>
-  r.json(db.prepare('SELECT id,name,rangs,objectif,materials,pattern_name FROM projects WHERE user_id=? ORDER BY id DESC').all(q.user.id)));
+  r.json(db.prepare('SELECT id,name,rangs,objectif,materials,pattern_name,statut FROM projects WHERE user_id=? ORDER BY id DESC').all(q.user.id)));
 
 app.post('/api/projects', (q, r) => {
   const name = String(q.body.name || '').trim();
@@ -115,20 +117,32 @@ app.get('/api/projects/:id', (q, r) => {
   p ? r.json(out(p)) : r.sendStatus(404);
 });
 
+const STATUTS = ['en_cours', 'pause', 'termine'];
 const int = v => v != null ? Math.max(0, parseInt(v, 10) || 0) : null;
 const cleanSteps = s => Array.isArray(s) ? JSON.stringify(s.slice(0, 100).map(x => ({ rang: int(x.rang) ?? 0, texte: String(x.texte || '').slice(0, 200), fait: !!x.fait }))) : null;
+const cleanCompteurs = c => Array.isArray(c) ? JSON.stringify(c.slice(0, 20).map(x => ({ nom: String(x.nom || '').slice(0, 60), valeur: int(x.valeur) ?? 0 }))) : null;
 app.patch('/api/projects/:id', (q, r) => {
-  if (!mine(q)) return r.sendStatus(404);
-  const { name, rangs, materials, objectif, steps } = q.body;
+  const cur = mine(q);
+  if (!cur) return r.sendStatus(404);
+  const { name, rangs, materials, objectif, steps, statut, extras, compteurs, jour } = q.body;
+  const nr = int(rangs);
   db.prepare(`UPDATE projects SET name=COALESCE(?,name), rangs=COALESCE(?,rangs), materials=COALESCE(?,materials),
-              objectif=COALESCE(?,objectif), steps=COALESCE(?,steps) WHERE id=? AND user_id=?`)
-    .run(name?.trim() || null, int(rangs), materials ?? null, int(objectif), cleanSteps(steps), q.pid, q.user.id);
+              objectif=COALESCE(?,objectif), steps=COALESCE(?,steps), statut=COALESCE(?,statut),
+              extras=COALESCE(?,extras), compteurs=COALESCE(?,compteurs) WHERE id=? AND user_id=?`)
+    .run(name?.trim() || null, nr, materials ?? null, int(objectif), cleanSteps(steps),
+         STATUTS.includes(statut) ? statut : null, extras == null ? null : +!!extras, cleanCompteurs(compteurs), q.pid, q.user.id);
+  if (nr != null && nr !== cur.rangs) {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(jour || '') ? jour : new Date().toISOString().slice(0, 10);
+    db.prepare(`INSERT INTO activity(project_id,day,n) VALUES(?,?,MAX(0,?))
+                ON CONFLICT(project_id,day) DO UPDATE SET n=MAX(0,n+?)`).run(q.pid, day, nr - cur.rangs, nr - cur.rangs);
+  }
   r.json(out(mine(q)));
 });
 
 app.delete('/api/projects/:id', (q, r) => {
   if (mine(q)) {
     db.prepare('DELETE FROM projects WHERE id=? AND user_id=?').run(q.pid, q.user.id);
+    db.prepare('DELETE FROM activity WHERE project_id=?').run(q.pid);
     fs.rmSync(file(q.pid), { force: true });
   }
   r.sendStatus(204);
@@ -164,7 +178,7 @@ app.get('/api/projects/:id/export', (q, r) => {
   const steps = JSON.parse(p.steps);
   const txt = [`Projet : ${p.name}`, `Rangs tricotés : ${p.rangs}${p.objectif ? ' / ' + p.objectif : ''}`, '',
     'Matériel :', p.materials || '(non renseigné)', '', 'Étapes :',
-  ...(steps.length ? steps.map(s => `- rang ${s.rang} : ${s.texte}${s.fait ? ' (fait)' : ''}`) : ['(aucune)']),
+    ...(steps.length ? steps.map(s => `- rang ${s.rang} : ${s.texte}${s.fait ? ' (fait)' : ''}`) : ['(aucune)']),
     '', p.pattern_name ? 'Patron : ' + p.pattern_name : 'Patron : aucun'].join('\r\n');
   r.attachment(p.name.replace(/[\/\\:*?"<>|]/g, '-') + '.zip');
   const z = archiver('zip');
@@ -173,6 +187,11 @@ app.get('/api/projects/:id/export', (q, r) => {
   z.append(txt, { name: 'projet.txt' });
   if (p.pattern_name && fs.existsSync(file(q.pid))) z.file(file(q.pid), { name: p.pattern_name.replace(/[\/\\]/g, '-') });
   z.finalize();
+});
+
+app.get('/api/projects/:id/stats', (q, r) => {
+  if (!mine(q)) return r.sendStatus(404);
+  r.json(db.prepare('SELECT day, n FROM activity WHERE project_id=? ORDER BY day DESC LIMIT 60').all(q.pid));
 });
 
 app.post('/api/password', (q, r) => {

@@ -9,7 +9,14 @@ const pref = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
 };
-let tab = 'compteur', me = null, lock = null;
+let tab = 'compteur', me = null, lock = null, filtre = 'tous';
+const iso = d => d.toLocaleDateString('sv-SE');
+function ondulation(btn) {
+  const o = document.createElement('span');
+  o.className = 'onde';
+  btn.appendChild(o);
+  o.addEventListener('animationend', () => o.remove());
+}
 
 // écran qui reste allumé (réglage propre à l'appareil), seulement sur l'écran du compteur
 const shouldWake = () => pref.get('ecran') === '1' && tab === 'compteur' && /^#\/p\/\d+/.test(location.hash);
@@ -24,13 +31,16 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 async function list() {
   tab = 'compteur';
-  const ps = await api('/api/projects');
-  app.innerHTML = `<header><h1>Mes projets</h1><button class="pill" id="new">+ Nouveau</button></header>` +
-    (ps.length ? ps.map(p => `<a class="card" href="#/p/${p.id}"><b>${esc(p.name)}</b><span class="n">${p.rangs}</span>
-      <small>${esc([p.pattern_name, p.materials.split('\n')[0]].filter(Boolean).join(' – ') || 'Pas encore de détails')}</small>
+  const ps = await api('/api/projects'), F = [['tous', 'Tous'], ['en_cours', 'En cours'], ['pause', 'En pause'], ['termine', 'Terminés']];
+  const L = { pause: 'En pause', termine: 'Terminé' }, vus = ps.filter(p => filtre === 'tous' || p.statut === filtre);
+  app.innerHTML = `<header><h1>Mes projets</h1><button class="pill" id="new">+ Nouveau</button></header>
+    <div class="row filtres">${F.map(([k, l]) => `<button class="pill ${filtre === k ? '' : 'clair'}" data-f="${k}">${l}</button>`).join('')}</div>` +
+    (vus.length ? vus.map(p => `<a class="card" href="#/p/${p.id}"><b>${esc(p.name)}</b><span class="n">${p.rangs}</span>
+      <small>${esc([L[p.statut], p.pattern_name, p.materials.split('\n')[0]].filter(Boolean).join(' – ') || 'Pas encore de détails')}</small>
       ${p.objectif ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div>` : ''}</a>`).join('')
-    : '<p class="vide">Aucun projet pour l’instant. Touche « + Nouveau » pour commencer.</p>') +
+    : `<p class="vide">${ps.length ? 'Aucun projet dans cette catégorie.' : 'Aucun projet pour l’instant. Touche « + Nouveau » pour commencer.'}</p>`) +
     `<p class="vide"><small>Connecté : ${esc(me.user)}</small><br><a class="pill clair" href="#/parametres">Paramètres</a> <button class="pill ghost" id="out">Se déconnecter</button></p>`;
+  document.querySelectorAll('.filtres button').forEach(b => b.onclick = () => { filtre = b.dataset.f; list(); });
   $('#out').onclick = async () => { await api('/api/logout', { method: 'POST' }); me = null; route(); };
   $('#new').onclick = async () => {
     const n = prompt('Nom du projet ?');
@@ -43,7 +53,7 @@ async function project(id) {
   try { p = await api('/api/projects/' + id); } catch (e) { if (e.status === 401) throw e; location.hash = ''; return; }
   const save = d => api('/api/projects/' + id, { method: 'PATCH', body: JSON.stringify(d) })
     .catch(() => alert('Sauvegarde impossible : le serveur ne répond pas.'));
-  const T = [['compteur', 'Compteur'], ['etapes', 'Étapes'], ['infos', 'Infos']];
+  const T = [['compteur', 'Compteur'], ['etapes', 'Étapes'], ['stats', 'Stats'], ['infos', 'Infos']];
   app.innerHTML = `<header><a href="#">‹ Projets</a><h1 id="titre">${esc(p.name)}</h1></header>
     <nav class="tabs">${T.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</nav><section id="v"></section>`;
   document.querySelectorAll('.tabs button').forEach(b => {
@@ -56,7 +66,7 @@ async function project(id) {
     v.innerHTML = `<div class="compteur"><div class="suivi" id="suivi"></div><p id="chiffre" aria-live="polite"></p><div id="etape" style="width:100%"></div>
       <div class="boutons"><button class="rond moins" id="moins" aria-label="Enlever un rang">−</button>
       <button class="rond" id="plus" aria-label="Ajouter un rang">+</button></div>
-      <button class="pill ghost" id="reset">Remise à 0</button></div>`;
+      <button class="pill ghost" id="reset">Remise à 0</button><div id="extras" class="extras"></div></div>`;
     const paint = () => {
       $('#chiffre').textContent = p.rangs;
       $('#suivi').innerHTML = p.objectif ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div><small>${p.rangs} / ${p.objectif} rangs</small>` : '';
@@ -66,11 +76,55 @@ async function project(id) {
         : `<div class="prochain">Dans ${d} rang${d > 1 ? 's' : ''} : ${esc(s.texte)}</div>`;
       if ($('#fait')) $('#fait').onclick = () => { s.fait = true; save({ steps: p.steps }); paint(); };
     };
-    const set = n => { p.rangs = Math.max(0, n); save({ rangs: p.rangs }); paint(); };
-    $('#plus').onclick = () => set(p.rangs + 1);
-    $('#moins').onclick = () => set(p.rangs - 1);
+    const set = n => { p.rangs = Math.max(0, n); save({ rangs: p.rangs, jour: iso(new Date()) }); paint(); };
+    const tap = (b, n) => {
+      ondulation(b); set(n);
+      const c = $('#chiffre'); c.classList.remove('pouf'); void c.offsetWidth; c.classList.add('pouf');
+    };
+    $('#plus').onclick = e => tap(e.currentTarget, p.rangs + 1);
+    $('#moins').onclick = e => tap(e.currentTarget, p.rangs - 1);
+    const drawExtras = () => {
+      const z = $('#extras');
+      if (!p.extras) { z.innerHTML = ''; return; }
+      z.innerHTML = p.compteurs.map((c, i) => `<div class="extra"><b>${esc(c.nom)}</b>
+        <button class="pill clair" data-i="${i}" data-d="-1" aria-label="Enlever">−</button><span>${c.valeur}</span>
+        <button class="pill" data-i="${i}" data-d="1" aria-label="Ajouter">+</button>
+        <button class="x" data-i="${i}" aria-label="Supprimer ce compteur">×</button></div>`).join('') +
+        '<button class="pill ghost" id="addc">+ Ajouter un compteur</button>';
+      z.querySelectorAll('button[data-d]').forEach(b => b.onclick = () => {
+        const c = p.compteurs[+b.dataset.i];
+        c.valeur = Math.max(0, c.valeur + +b.dataset.d);
+        ondulation(b); save({ compteurs: p.compteurs });
+        b.parentNode.querySelector('span').textContent = c.valeur;
+      });
+      z.querySelectorAll('.x').forEach(b => b.onclick = () => {
+        const c = p.compteurs[+b.dataset.i];
+        if (confirm(`Supprimer le compteur « ${c.nom} » ?`)) { p.compteurs.splice(+b.dataset.i, 1); save({ compteurs: p.compteurs }); drawExtras(); }
+      });
+      $('#addc').onclick = () => {
+        const n = prompt('Nom du compteur ? (ex. augmentations)');
+        if (n?.trim()) { p.compteurs.push({ nom: n.trim(), valeur: 0 }); save({ compteurs: p.compteurs }); drawExtras(); }
+      };
+    };
     $('#reset').onclick = () => { if (p.rangs === 0 || confirm('Remettre le compteur à 0 ?')) set(0); };
     paint();
+    drawExtras();
+  } else if (tab === 'stats') {
+    v.innerHTML = '<p class="vide">Chargement…</p>';
+    const rows = await api(`/api/projects/${id}/stats`);
+    const par = Object.fromEntries(rows.map(x => [x.day, x.n]));
+    const jour = i => iso(new Date(Date.now() - i * 864e5));
+    const somme = k => Array.from({ length: k }, (_, i) => par[jour(i)] || 0).reduce((a, b) => a + b, 0);
+    const actifs = Array.from({ length: 30 }, (_, i) => par[jour(i)] || 0).filter(n => n > 0);
+    const best = rows.reduce((m, x) => x.n > m.n ? x : m, { n: 0 });
+    const g = Array.from({ length: 14 }, (_, i) => { const d = jour(13 - i); return { d, n: par[d] || 0 }; }), max = Math.max(1, ...g.map(x => x.n));
+    v.innerHTML = rows.length ? `<div class="stats">
+      <div><b>${somme(1)}</b>aujourd’hui</div><div><b>${somme(7)}</b>7 derniers jours</div>
+      <div><b>${somme(30)}</b>30 derniers jours</div><div><b>${actifs.length ? Math.round(actifs.reduce((a, b) => a + b, 0) / actifs.length) : 0}</b>par jour de tricot</div></div>
+      <h2>14 derniers jours</h2>
+      <div class="graphe">${g.map(x => `<div title="${x.d} : ${x.n}"><i style="height:${Math.round(x.n / max * 100)}%"></i><small>${+x.d.slice(8)}</small></div>`).join('')}</div>
+      ${best.n ? `<p>Meilleur jour : ${best.n} rangs le ${new Date(best.day + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}.</p>` : ''}`
+      : '<p class="vide">Les statistiques se remplissent à partir de maintenant : compte quelques rangs et reviens ici.</p>';
   } else if (tab === 'etapes') {
     const draw = () => {
       v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}"><span><b>${esc(s.texte)}</b><br>
@@ -92,6 +146,8 @@ async function project(id) {
     const a = p.pattern_name;
     v.innerHTML = `<label for="nom">Nom du projet</label><input type="text" id="nom" value="${esc(p.name)}">
       <label for="obj">Objectif de rangs (0 = aucun)</label><input type="number" id="obj" min="0" value="${p.objectif}">
+      <label for="st">Statut</label><select id="st">${[['en_cours', 'En cours'], ['pause', 'En pause'], ['termine', 'Terminé']].map(([k, l]) => `<option value="${k}" ${p.statut === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <label class="ligne"><input type="checkbox" id="ex" ${p.extras ? 'checked' : ''}> Compteurs supplémentaires pour ce projet</label>
       <label for="mat">Matériel (laine, aiguilles, tension, coloris…)</label><textarea id="mat">${esc(p.materials)}</textarea>
       <label>Patron PDF</label><div class="row">
       ${a ? `<a class="pill" target="_blank" href="/api/projects/${id}/pattern">${esc(a)}</a>` : '<span>Aucun patron joint</span>'}
@@ -104,6 +160,8 @@ async function project(id) {
       p.name = e.target.value.trim(); $('#titre').textContent = p.name; save({ name: p.name });
     };
     $('#obj').onchange = e => { p.objectif = Math.max(0, parseInt(e.target.value, 10) || 0); e.target.value = p.objectif; save({ objectif: p.objectif }); };
+    $('#st').onchange = e => { p.statut = e.target.value; save({ statut: p.statut }); };
+    $('#ex').onchange = e => { p.extras = e.target.checked; save({ extras: p.extras }); };
     $('#mat').onchange = e => save({ materials: e.target.value });
     $('#pdf').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
