@@ -247,7 +247,7 @@
     async function list() {
       tab = 'compteur';
       const ps = await api('/api/projects');
-      app.innerHTML = `<header><h1>Mes projets</h1><button class="pill" id="new">+ Nouveau</button></header>` +
+      app.innerHTML = `<header><h1>Mes tricots</h1><button class="pill" id="new">+ Nouveau</button></header>` +
         (ps.length ? ps.map(p => `<a class="card" href="#/p/${p.id}"><b>${esc(p.name)}</b><span class="n">${p.rangs}</span>
       <small>${esc([p.pattern_name, p.materials.split('\n')[0]].filter(Boolean).join(' – ') || 'Pas encore de détails')}</small></a>`).join('')
           : '<p class="vide">Aucun projet pour l’instant. Touche « + Nouveau » pour commencer.</p>');
