@@ -57,7 +57,19 @@ const out = p => ({ ...p, steps: JSON.parse(p.steps), compteurs: JSON.parse(p.co
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Anti-cache : chaque fichier de l'interface est appelé avec une empreinte (?v=...) qui change dès qu'il est modifié
+const PUB = path.join(__dirname, 'public');
+const version = () => {
+  const h = crypto.createHash('sha1');
+  for (const f of fs.readdirSync(PUB).sort()) h.update(fs.readFileSync(path.join(PUB, f)));
+  return h.digest('hex').slice(0, 8);
+};
+app.get(['/', '/index.html'], (q, r) => {
+  const html = fs.readFileSync(path.join(PUB, 'index.html'), 'utf8')
+    .replace(/(href|src)="(style\.css|app\.js|favicon\.svg|apple-touch-icon\.png)"/g, `$1="$2?v=${version()}"`);
+  r.set('Cache-Control', 'no-store').type('html').send(html);
+});
+app.use(express.static(PUB, { setHeaders: r => r.setHeader('Cache-Control', 'no-cache') }));
 app.param('id', (q, r, next, v) => {
   q.pid = parseInt(v, 10);
   Number.isInteger(q.pid) ? next() : r.sendStatus(400);
