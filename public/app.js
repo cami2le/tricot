@@ -53,6 +53,14 @@ async function project(id) {
   try { p = await api('/api/projects/' + id); } catch (e) { if (e.status === 401) throw e; location.hash = ''; return; }
   const save = d => api('/api/projects/' + id, { method: 'PATCH', body: JSON.stringify(d) })
     .catch(() => alert('Sauvegarde impossible : le serveur ne répond pas.'));
+  if (p.steps.some(s => s.longueur == null)) {   // anciennes étapes (rang absolu) -> longueurs
+    let prev = 0;
+    p.steps.forEach(s => { if (s.longueur == null) { s.longueur = Math.max(1, s.rang - prev); prev = s.rang; } });
+    p.debut = Math.max(0, ...p.steps.filter(s => s.fait).map(s => s.rang ?? 0));
+    save({ steps: p.steps, debut: p.debut });
+  }
+  p.steps.forEach(s => { s.repetitions ||= 1; s.faites ||= 0; });
+  const titre = s => s.repetitions > 1 ? `Tous les ${s.longueur} rangs : ${s.texte} (${s.repetitions} fois)` : `${s.longueur} rangs, puis : ${s.texte}`;
   const T = [['compteur', 'Compteur'], ['etapes', 'Étapes'], ['stats', 'Stats'], ['infos', 'Infos']];
   app.innerHTML = `<header><a href="#">‹ Projets</a><h1 id="titre">${esc(p.name)}</h1></header>
     <nav class="tabs">${T.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</nav><section id="v"></section>`;
@@ -68,13 +76,17 @@ async function project(id) {
       <button class="rond" id="plus" aria-label="Ajouter un rang">+</button></div>
       <button class="pill ghost" id="reset">Remise à 0</button><div id="extras" class="extras"></div></div>`;
     const paint = () => {
-      $('#chiffre').textContent = p.rangs;
-      $('#suivi').innerHTML = p.objectif ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div><small>${p.rangs} / ${p.objectif} rangs</small>` : '';
-      const s = p.steps.find(x => !x.fait), d = s ? s.rang - p.rangs : 0;
-      $('#etape').innerHTML = !s ? '' : d <= 0
-        ? `<div class="alerte"><b>Maintenant : ${esc(s.texte)}</b><button class="pill" id="fait">Fait ✓</button></div>`
-        : `<div class="prochain">Dans ${d} rang${d > 1 ? 's' : ''} : ${esc(s.texte)}</div>`;
-      if ($('#fait')) $('#fait').onclick = () => { s.fait = true; save({ steps: p.steps }); paint(); };
+      const n = Math.max(0, p.rangs - p.debut), pend = p.steps.filter(x => !x.fait), s = pend[0];
+      $('#chiffre').textContent = n;
+      $('#suivi').innerHTML = p.objectif
+        ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div><small>Total : ${p.rangs} / ${p.objectif} rangs</small>`
+        : p.debut ? `<small>Total : ${p.rangs} rangs</small>` : '';
+      $('#etape').innerHTML = !s ? '' : n >= s.longueur
+        ? `<div class="alerte"><b>${s.longueur} rangs faits : ${esc(s.texte)}</b><button class="pill" id="fait">${s.faites + 1 < s.repetitions ? 'Répétition suivante' : 'Étape suivante'}</button></div>`
+        : `<div class="prochain"><small>${s.repetitions > 1 ? `Répétition ${s.faites + 1} / ${s.repetitions}` : 'Étape en cours'} : ${n} / ${s.longueur} rangs</small>
+            <div class="barre"><i style="width:${Math.round(n / s.longueur * 100)}%"></i></div>
+            <small>Puis : ${esc(s.texte)}</small></div>`;
+      if ($('#fait')) $('#fait').onclick = () => { s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
     };
     const set = n => { p.rangs = Math.max(0, n); save({ rangs: p.rangs, jour: iso(new Date()) }); paint(); };
     const tap = (b, n) => {
@@ -82,7 +94,7 @@ async function project(id) {
       const c = $('#chiffre'); c.classList.remove('pouf'); void c.offsetWidth; c.classList.add('pouf');
     };
     $('#plus').onclick = e => tap(e.currentTarget, p.rangs + 1);
-    $('#moins').onclick = e => tap(e.currentTarget, p.rangs - 1);
+    $('#moins').onclick = e => { if (p.rangs > p.debut) tap(e.currentTarget, p.rangs - 1); };
     const drawExtras = () => {
       const z = $('#extras');
       if (!p.extras) { z.innerHTML = ''; return; }
@@ -106,7 +118,7 @@ async function project(id) {
         if (n?.trim()) { p.compteurs.push({ nom: n.trim(), valeur: 0 }); save({ compteurs: p.compteurs }); drawExtras(); }
       };
     };
-    $('#reset').onclick = () => { if (p.rangs === 0 || confirm('Remettre le compteur à 0 ?')) set(0); };
+    $('#reset').onclick = () => { if (p.rangs === p.debut || confirm('Remettre le compteur de l’étape à 0 ? Le total est conservé.')) { p.debut = p.rangs; save({ debut: p.debut }); paint(); } };
     paint();
     drawExtras();
   } else if (tab === 'stats') {
@@ -127,17 +139,18 @@ async function project(id) {
       : '<p class="vide">Les statistiques se remplissent à partir de maintenant : compte quelques rangs et reviens ici.</p>';
   } else if (tab === 'etapes') {
     const draw = () => {
-      v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}"><span><b>${esc(s.texte)}</b><br>
-        <small>Rang ${s.rang}${s.fait ? ' · fait' : s.rang > p.rangs ? ` · dans ${s.rang - p.rangs} rang(s)` : ' · à faire maintenant'}</small></span>
+      const cur = p.steps.findIndex(x => !x.fait);
+      v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}"><span><b>${esc(titre(s))}</b><br>
+        <small>${s.fait ? 'Fait' : i === cur ? `En cours : ${s.repetitions > 1 ? 'répétition ' + (s.faites + 1) + '/' + s.repetitions + ', ' : ''}${Math.max(0, p.rangs - p.debut)} / ${s.longueur} rangs` : 'À venir'}</small></span>
         <button class="pill ghost" data-i="${i}">Supprimer</button></li>`).join('') || '<li class="vide">Aucune étape pour l’instant.</li>'}</ul>
-        <form id="f"><label for="n">Dans combien de rangs ?</label><input type="number" id="n" min="1" value="10" required>
-        <label for="t">Quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" required>
+        <form id="f"><label for="n">Combien de rangs ?</label><input type="number" id="n" min="1" value="10" required>
+        <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" required>
+        <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="1" required>
         <div class="row" style="margin-top:1rem"><button class="pill">Ajouter l’étape</button></div></form>`;
       v.querySelectorAll('li button').forEach(b => b.onclick = () => { p.steps.splice(+b.dataset.i, 1); save({ steps: p.steps }); draw(); });
       $('#f').onsubmit = e => {
         e.preventDefault();
-        p.steps.push({ rang: p.rangs + Math.max(1, parseInt($('#n').value, 10) || 1), texte: $('#t').value.trim(), fait: false });
-        p.steps.sort((a, b) => a.rang - b.rang);
+        p.steps.push({ longueur: Math.max(1, parseInt($('#n').value, 10) || 1), texte: $('#t').value.trim(), repetitions: Math.min(99, Math.max(1, parseInt($('#r').value, 10) || 1)), faites: 0, fait: false });
         save({ steps: p.steps }); draw();
       };
     };
