@@ -64,3 +64,5 @@ textarea{min-height:7rem}
 .graphe i{display:block;width:100%;background:var(--violet);border-radius:.3rem .3rem 0 0;min-height:2px}
 .graphe small{font-size:.7rem;opacity:.7;margin-top:.2rem}
 @media(prefers-reduced-motion:reduce){.onde,.pouf{animation:none}}
+.prochain .barre{margin:.5rem 0}
+.etapes li{flex-wrap:wrap}.etapes li.edit{outline:2px solid var(--violet)}.etapes .pill{padding:.4rem .8rem;font-size:.95rem}

@@ -60,7 +60,8 @@ async function project(id) {
     save({ steps: p.steps, debut: p.debut });
   }
   p.steps.forEach(s => { s.repetitions ||= 1; s.faites ||= 0; });
-  const titre = s => s.repetitions > 1 ? `Tous les ${s.longueur} rangs : ${s.texte} (${s.repetitions} fois)` : `${s.longueur} rangs, puis : ${s.texte}`;
+  const titre = s => s.longueur === 0 ? `Tout de suite : ${s.texte}${s.repetitions > 1 ? ` (${s.repetitions} fois)` : ''}`
+    : s.repetitions > 1 ? `Tous les ${s.longueur} rangs : ${s.texte} (${s.repetitions} fois)` : `${s.longueur} rangs, puis : ${s.texte}`;
   const T = [['compteur', 'Compteur'], ['etapes', 'Étapes'], ['stats', 'Stats'], ['infos', 'Infos']];
   app.innerHTML = `<header><a href="#">‹ Projets</a><h1 id="titre">${esc(p.name)}</h1></header>
     <nav class="tabs">${T.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</nav><section id="v"></section>`;
@@ -82,7 +83,7 @@ async function project(id) {
         ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div><small>Total : ${p.rangs} / ${p.objectif} rangs</small>`
         : p.debut ? `<small>Total : ${p.rangs} rangs</small>` : '';
       $('#etape').innerHTML = !s ? '' : n >= s.longueur
-        ? `<div class="alerte"><b>${s.longueur} rangs faits : ${esc(s.texte)}</b><button class="pill" id="fait">${s.faites + 1 < s.repetitions ? 'Répétition suivante' : 'Étape suivante'}</button></div>`
+        ? `<div class="alerte"><b>${s.longueur ? s.longueur + ' rangs faits : ' : 'À faire maintenant : '}${esc(s.texte)}</b><button class="pill" id="fait">${s.faites + 1 < s.repetitions ? 'Répétition suivante' : 'Étape suivante'}</button></div>`
         : `<div class="prochain"><small>${s.repetitions > 1 ? `Répétition ${s.faites + 1} / ${s.repetitions}` : 'Étape en cours'} : ${n} / ${s.longueur} rangs</small>
             <div class="barre"><i style="width:${Math.round(n / s.longueur * 100)}%"></i></div>
             <small>Puis : ${esc(s.texte)}</small></div>`;
@@ -138,20 +139,27 @@ async function project(id) {
       ${best.n ? `<p>Meilleur jour : ${best.n} rangs le ${new Date(best.day + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}.</p>` : ''}`
       : '<p class="vide">Les statistiques se remplissent à partir de maintenant : compte quelques rangs et reviens ici.</p>';
   } else if (tab === 'etapes') {
+    let edit = -1;
     const draw = () => {
-      const cur = p.steps.findIndex(x => !x.fait);
-      v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}"><span><b>${esc(titre(s))}</b><br>
+      const cur = p.steps.findIndex(x => !x.fait), e0 = p.steps[edit] || { longueur: 10, texte: '', repetitions: 1 };
+      v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}${i === edit ? ' edit' : ''}"><span><b>${esc(titre(s))}</b><br>
         <small>${s.fait ? 'Fait' : i === cur ? `En cours : ${s.repetitions > 1 ? 'répétition ' + (s.faites + 1) + '/' + s.repetitions + ', ' : ''}${Math.max(0, p.rangs - p.debut)} / ${s.longueur} rangs` : 'À venir'}</small></span>
-        <button class="pill ghost" data-i="${i}">Supprimer</button></li>`).join('') || '<li class="vide">Aucune étape pour l’instant.</li>'}</ul>
-        <form id="f"><label for="n">Combien de rangs ?</label><input type="number" id="n" min="1" value="10" required>
-        <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" required>
-        <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="1" required>
-        <div class="row" style="margin-top:1rem"><button class="pill">Ajouter l’étape</button></div></form>`;
-      v.querySelectorAll('li button').forEach(b => b.onclick = () => { p.steps.splice(+b.dataset.i, 1); save({ steps: p.steps }); draw(); });
-      $('#f').onsubmit = e => {
-        e.preventDefault();
-        p.steps.push({ longueur: Math.max(1, parseInt($('#n').value, 10) || 1), texte: $('#t').value.trim(), repetitions: Math.min(99, Math.max(1, parseInt($('#r').value, 10) || 1)), faites: 0, fait: false });
-        save({ steps: p.steps }); draw();
+        <span class="row"><button class="pill clair" data-m="${i}">Modifier</button><button class="pill ghost" data-i="${i}">Supprimer</button></span></li>`).join('') || '<li class="vide">Aucune étape pour l’instant.</li>'}</ul>
+        <form id="f"><h2>${edit >= 0 ? 'Modifier l’étape' : 'Nouvelle étape'}</h2>
+        <label for="n">Combien de rangs ? (0 = à faire tout de suite)</label><input type="number" id="n" min="0" value="${e0.longueur}" required>
+        <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}" required>
+        <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="${e0.repetitions}" required>
+        <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>`;
+      v.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { p.steps.splice(+b.dataset.i, 1); edit = -1; save({ steps: p.steps }); draw(); });
+      v.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { edit = +b.dataset.m; draw(); $('#f').scrollIntoView({ behavior: 'smooth' }); });
+      if ($('#annuler')) $('#annuler').onclick = () => { edit = -1; draw(); };
+      $('#f').onsubmit = ev => {
+        ev.preventDefault();
+        const l = parseInt($('#n').value, 10), r = parseInt($('#r').value, 10);
+        const d = { longueur: Number.isNaN(l) ? 1 : Math.max(0, l), texte: $('#t').value.trim(), repetitions: Math.min(99, Math.max(1, r || 1)) };
+        if (edit >= 0) { const s = p.steps[edit]; Object.assign(s, d); if (!s.fait) s.faites = Math.min(s.faites, d.repetitions - 1); }
+        else p.steps.push({ ...d, faites: 0, fait: false });
+        edit = -1; save({ steps: p.steps }); draw();
       };
     };
     draw();

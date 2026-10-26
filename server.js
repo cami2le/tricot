@@ -131,7 +131,7 @@ app.get('/api/projects/:id', (q, r) => {
 
 const STATUTS = ['en_cours', 'pause', 'termine'];
 const int = v => v != null ? Math.max(0, parseInt(v, 10) || 0) : null;
-const cleanSteps = s => Array.isArray(s) ? JSON.stringify(s.slice(0, 100).map(x => ({ longueur: Math.max(1, int(x.longueur) || 1), repetitions: Math.min(99, Math.max(1, int(x.repetitions) || 1)), faites: int(x.faites) || 0, texte: String(x.texte || '').slice(0, 200), fait: !!x.fait }))) : null;
+const cleanSteps = s => Array.isArray(s) ? JSON.stringify(s.slice(0, 100).map(x => ({ longueur: int(x.longueur) ?? 1, repetitions: Math.min(99, Math.max(1, int(x.repetitions) || 1)), faites: int(x.faites) || 0, texte: String(x.texte || '').slice(0, 200), fait: !!x.fait }))) : null;
 const cleanCompteurs = c => Array.isArray(c) ? JSON.stringify(c.slice(0, 20).map(x => ({ nom: String(x.nom || '').slice(0, 60), valeur: int(x.valeur) ?? 0 }))) : null;
 app.patch('/api/projects/:id', (q, r) => {
   const cur = mine(q);
@@ -190,7 +190,7 @@ app.get('/api/projects/:id/export', (q, r) => {
   const steps = JSON.parse(p.steps);
   const txt = [`Projet : ${p.name}`, `Rangs tricotés : ${p.rangs}${p.objectif ? ' / ' + p.objectif : ''}`, '',
     'Matériel :', p.materials || '(non renseigné)', '', 'Étapes :',
-    ...(steps.length ? steps.map(s => `- ${s.longueur ? s.longueur + ' rangs puis ' : 'rang ' + s.rang + ' : '}${s.texte}${s.repetitions > 1 ? ' (x' + s.repetitions + ')' : ''}${s.fait ? ' (fait)' : ''}`) : ['(aucune)']),
+    ...(steps.length ? steps.map(s => `- ${s.longueur != null ? (s.longueur ? s.longueur + ' rangs puis ' : 'tout de suite : ') : 'rang ' + s.rang + ' : '}${s.texte}${s.repetitions > 1 ? ' (x' + s.repetitions + ')' : ''}${s.fait ? ' (fait)' : ''}`) : ['(aucune)']),
     '', p.pattern_name ? 'Patron : ' + p.pattern_name : 'Patron : aucun'].join('\r\n');
   r.attachment(p.name.replace(/[\/\\:*?"<>|]/g, '-') + '.zip');
   const z = archiver('zip');
