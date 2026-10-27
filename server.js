@@ -133,7 +133,7 @@ app.get('/api/projects/:id', (q, r) => {
 const STATUTS = ['en_cours', 'pause', 'termine'];
 const flag = v => v == null ? null : +!!v;
 const int = v => v != null ? Math.max(0, parseInt(v, 10) || 0) : null;
-const cleanSteps = s => Array.isArray(s) ? JSON.stringify(s.slice(0, 100).map(x => ({ longueur: int(x.longueur) ?? 1, repetitions: Math.min(99, Math.max(1, int(x.repetitions) || 1)), faites: int(x.faites) || 0, texte: String(x.texte || '').slice(0, 200), fait: !!x.fait }))) : null;
+const cleanSteps = s => Array.isArray(s) ? JSON.stringify(s.slice(0, 100).map(x => ({ longueur: int(x.longueur) ?? 1, repetitions: Math.min(99, Math.max(1, int(x.repetitions) || 1)), faites: int(x.faites) || 0, compte: x.compte == null ? undefined : int(x.compte), texte: String(x.texte || '').slice(0, 200), fait: !!x.fait }))) : null;
 const cleanCompteurs = c => Array.isArray(c) ? JSON.stringify(c.slice(0, 20).map(x => ({ nom: String(x.nom || '').slice(0, 60), valeur: int(x.valeur) ?? 0 }))) : null;
 app.patch('/api/projects/:id', (q, r) => {
   const cur = mine(q);

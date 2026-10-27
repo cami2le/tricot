@@ -10,6 +10,7 @@ const pref = {
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
 };
 let tab = 'compteur', me = null, lock = null, filtre = 'tous';
+const large = () => matchMedia('(min-width: 800px)').matches;
 const iso = d => d.toLocaleDateString('sv-SE');
 function ondulation(btn) {
   const o = document.createElement('span');
@@ -19,7 +20,7 @@ function ondulation(btn) {
 }
 
 // écran qui reste allumé (réglage propre à l'appareil), seulement sur l'écran du compteur
-const shouldWake = () => pref.get('ecran') === '1' && tab === 'compteur' && /^#\/p\/\d+/.test(location.hash);
+const shouldWake = () => pref.get('ecran') === '1' && (tab === 'compteur' || large()) && /^#\/p\/\d+/.test(location.hash);
 async function wake() {
   try {
     if (shouldWake()) {
@@ -51,7 +52,8 @@ async function list() {
 async function project(id) {
   let p;
   try { p = await api('/api/projects/' + id); } catch (e) { if (e.status === 401) throw e; location.hash = ''; return; }
-  const save = d => api('/api/projects/' + id, { method: 'PATCH', body: JSON.stringify(d) })
+  let maj = () => {}, majExtras = () => {};
+  const save = d => (maj(), api('/api/projects/' + id, { method: 'PATCH', body: JSON.stringify(d) }))
     .catch(() => alert('Sauvegarde impossible : le serveur ne répond pas.'));
   if (p.steps.some(s => s.longueur == null)) {   // anciennes étapes (rang absolu) -> longueurs
     let prev = 0;
@@ -63,14 +65,16 @@ async function project(id) {
   const titre = s => s.longueur === 0 ? `Tout de suite : ${s.texte}${s.repetitions > 1 ? ` (${s.repetitions} fois)` : ''}`
     : s.repetitions > 1 ? `Tous les ${s.longueur} rangs : ${s.texte} (${s.repetitions} fois)` : `${s.longueur} rangs, puis : ${s.texte}`;
   const T = [['compteur', 'Compteur'], ['etapes', 'Étapes'], ['stats', 'Stats'], ['infos', 'Infos']];
+  const W = large(), TT = W ? T.slice(1) : T;
+  if (W && tab === 'compteur') tab = 'etapes';
   app.innerHTML = `<header><a href="#">‹ Projets</a><h1 id="titre">${esc(p.name)}</h1></header>
-    <nav class="tabs">${T.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</nav><section id="v"></section>`;
+    ${(nav => W ? `<div class="deux"><section id="g"></section><div>${nav}<section id="v"></section></div></div>` : `${nav}<section id="v"></section>`)(
+      `<nav class="tabs">${TT.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</nav>`)}`;
   document.querySelectorAll('.tabs button').forEach(b => {
     b.className = 'pill ' + (b.dataset.t === tab ? '' : 'clair');
     b.onclick = () => { tab = b.dataset.t; project(id); };
   });
-  const v = $('#v');
-
+  const render = async (v, tab) => {
   if (tab === 'compteur') {
     v.innerHTML = `<div class="compteur"><div class="suivi" id="suivi"></div><p id="chiffre" aria-live="polite"></p><div id="rayures" style="width:100%"></div><div id="detail" style="width:100%"></div><div id="etape" style="width:100%"></div>
       <div class="boutons"><button class="rond moins" id="moins" aria-label="Enlever un rang">−</button>
@@ -94,7 +98,7 @@ async function project(id) {
         : `<div class="prochain"><small>${s.repetitions > 1 ? `Répétition ${s.faites + 1} / ${s.repetitions}` : 'Étape en cours'} : ${n} / ${s.longueur} rangs</small>
             <div class="barre"><i style="width:${Math.round(n / s.longueur * 100)}%"></i></div>
             <small>Puis : ${esc(s.texte)}</small></div>`;
-      if ($('#fait')) $('#fait').onclick = () => { s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
+      if ($('#fait')) $('#fait').onclick = () => { s.compte = (s.compte ?? s.longueur * s.faites) + n; s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
     };
     const set = n => { p.rangs = Math.max(0, n); save({ rangs: p.rangs, jour: iso(new Date()) }); paint(); };
     const tap = (b, n) => {
@@ -129,6 +133,7 @@ async function project(id) {
     $('#reset').onclick = () => { if (p.rangs === p.debut || confirm('Remettre le compteur de l’étape à 0 ? Le total est conservé.')) { p.debut = p.rangs; save({ debut: p.debut }); paint(); } };
     paint();
     drawExtras();
+    maj = paint; majExtras = drawExtras;
   } else if (tab === 'stats') {
     v.innerHTML = '<p class="vide">Chargement…</p>';
     const rows = await api(`/api/projects/${id}/stats`);
@@ -157,7 +162,15 @@ async function project(id) {
         <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}" required>
         <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="${e0.repetitions}" required>
         <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>`;
-      v.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { p.steps.splice(+b.dataset.i, 1); edit = -1; save({ steps: p.steps }); draw(); });
+      v.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => {
+        const i = +b.dataset.i, s = p.steps[i], courante = i === p.steps.findIndex(x => !x.fait), n = Math.max(0, p.rangs - p.debut);
+        const avant = s.compte ?? s.longueur * (s.fait ? s.repetitions : s.faites);   // rangs des répétitions déjà terminées
+        const dd = courante || s.fait ? avant : 0, rr = dd + (courante ? n : 0);       // rangs à retirer du total
+        if (!confirm(rr ? `Supprimer cette étape ? Les ${Math.min(rr, p.rangs)} rangs comptés pour elle seront retirés du total.` : 'Supprimer cette étape ?')) return;
+        p.rangs = Math.max(0, p.rangs - rr); p.debut = Math.min(p.rangs, Math.max(0, p.debut - dd));
+        p.steps.splice(i, 1); edit = -1;
+        save({ steps: p.steps, rangs: p.rangs, debut: p.debut, jour: iso(new Date()) }); draw();
+      });
       v.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { edit = +b.dataset.m; draw(); $('#f').scrollIntoView({ behavior: 'smooth' }); });
       if ($('#annuler')) $('#annuler').onclick = () => { edit = -1; draw(); };
       $('#f').onsubmit = ev => {
@@ -198,7 +211,7 @@ async function project(id) {
     $('#dl').onchange = e => { p.detail = e.target.value; save({ detail: p.detail }); };
     $('#db').onchange = e => { p.detail_boucle = e.target.checked ? 1 : 0; save({ detail_boucle: p.detail_boucle }); };
     $('#st').onchange = e => { p.statut = e.target.value; save({ statut: p.statut }); };
-    $('#ex').onchange = e => { p.extras = e.target.checked; save({ extras: p.extras }); };
+    $('#ex').onchange = e => { p.extras = e.target.checked; save({ extras: p.extras }); majExtras(); };
     $('#mat').onchange = e => save({ materials: e.target.value });
     $('#pdf').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
@@ -212,6 +225,9 @@ async function project(id) {
       if (confirm(`Supprimer « ${p.name} » et son patron ? Cette action est définitive.`)) { await api('/api/projects/' + id, { method: 'DELETE' }); location.hash = ''; }
     };
   }
+  };
+  if (W) await render($('#g'), 'compteur');
+  await render($('#v'), tab);
   wake();
 }
 
@@ -271,4 +287,5 @@ async function route() {
   }
 }
 addEventListener('hashchange', route);
+matchMedia('(min-width: 800px)').addEventListener('change', () => route());
 route();

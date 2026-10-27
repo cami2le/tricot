@@ -69,3 +69,8 @@ textarea{min-height:7rem}
 [hidden]{display:none!important}.alerte.centre{justify-content:center}
 .detail{background:var(--carte);border-radius:1rem;padding:.8rem 1rem;text-align:left;display:flex;flex-direction:column;gap:.2rem}
 .detail b{font-weight:normal;font-size:1.25rem;white-space:pre-wrap}
+@media(min-width:800px){
+  #app:has(.deux){max-width:1100px}
+  .deux{display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start}
+  .deux>section{position:sticky;top:1rem}
+}
