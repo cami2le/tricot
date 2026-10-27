@@ -83,3 +83,10 @@ button:disabled{opacity:.35;cursor:default}
 #f-chiffre{font-size:clamp(8rem,38vh,16rem);line-height:1;margin:0;font-variant-numeric:tabular-nums}
 #focus .rond{width:clamp(7.5rem,24vh,12rem);height:clamp(7.5rem,24vh,12rem);font-size:clamp(4rem,12vh,7rem)}
 #focus .detail b{font-size:1.6rem}
+details.faites{background:var(--carte);border-radius:1rem;padding:.2rem .8rem;margin-bottom:1rem}
+details.faites summary{cursor:pointer;padding:.6rem 0;opacity:.85}
+details.faites .etapes{margin-top:.4rem}
+details.faites .etapes li{background:var(--fond);text-decoration:none;opacity:.85}
+.section{font-size:.95rem;opacity:.7;margin:1rem 0 .5rem}
+.etapes li.courante{border-left:4px solid var(--violet)}
+.etapes li .barre{flex-basis:100%}

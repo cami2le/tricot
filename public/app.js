@@ -168,13 +168,22 @@ async function project(id) {
       ${best.n ? `<p>Meilleur jour : ${best.n} rangs le ${new Date(best.day + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}.</p>` : ''}`
       : '<p class="vide">Les statistiques se remplissent à partir de maintenant : compte quelques rangs et reviens ici.</p>';
   } else if (tab === 'etapes') {
-    let edit = -1;
+    let edit = -1, ouvert = false;
     const autres = (await api('/api/projects')).filter(x => x.id !== id);
     const draw = () => {
       const cur = p.steps.findIndex(x => !x.fait), e0 = p.steps[edit] || { longueur: 10, texte: '', repetitions: 1 };
-      v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}${i === edit ? ' edit' : ''}"><span><b>${esc(titre(s))}</b><br>
-        <small>${s.fait ? 'Fait' : i === cur ? `En cours : ${s.repetitions > 1 ? 'répétition ' + (s.faites + 1) + '/' + s.repetitions + ', ' : ''}${Math.max(0, p.rangs - p.debut)} / ${s.longueur} rangs` : 'À venir'}</small></span>
-        <span class="row"><button class="pill ghost fleche" data-haut="${i}" aria-label="Monter" ${i === 0 || p.steps[i - 1].fait !== s.fait ? 'disabled' : ''}>▲</button><button class="pill ghost fleche" data-bas="${i}" aria-label="Descendre" ${i === p.steps.length - 1 || p.steps[i + 1].fait !== s.fait ? 'disabled' : ''}>▼</button><button class="pill clair" data-dup="${i}">Dupliquer</button><button class="pill clair" data-m="${i}">Modifier</button><button class="pill ghost" data-i="${i}">Supprimer</button></span></li>`).join('') || '<li class="vide">Aucune étape pour l’instant.</li>'}</ul>
+      const n = Math.max(0, p.rangs - p.debut), paires = p.steps.map((s, i) => [s, i]);
+      const faites = paires.filter(([s]) => s.fait), restes = paires.filter(([s]) => !s.fait);
+      const item = (s, i) => `<li class="${s.fait ? 'fait' : ''}${i === cur ? ' courante' : ''}${i === edit ? ' edit' : ''}"><span><b>${esc(titre(s))}</b><br>
+        <small>${s.fait ? 'Fait' : i === cur ? `En cours : ${s.repetitions > 1 ? 'répétition ' + (s.faites + 1) + '/' + s.repetitions + ', ' : ''}${n} / ${s.longueur} rangs` : 'À venir'}</small></span>
+        <span class="row"><button class="pill ghost fleche" data-haut="${i}" aria-label="Monter" ${i === 0 || p.steps[i - 1].fait !== s.fait ? 'disabled' : ''}>▲</button><button class="pill ghost fleche" data-bas="${i}" aria-label="Descendre" ${i === p.steps.length - 1 || p.steps[i + 1].fait !== s.fait ? 'disabled' : ''}>▼</button><button class="pill clair" data-dup="${i}">Dupliquer</button><button class="pill clair" data-m="${i}">Modifier</button><button class="pill ghost" data-i="${i}">Supprimer</button></span>
+        ${i === cur ? `<div class="barre"><i style="width:${s.longueur ? Math.min(100, Math.round(n / s.longueur * 100)) : 100}%"></i></div>` : ''}</li>`;
+      const ul = l => `<ul class="etapes">${l.map(([s, i]) => item(s, i)).join('')}</ul>`;
+      const bloc = !p.steps.length ? '<ul class="etapes"><li class="vide">Aucune étape pour l’instant.</li></ul>'
+        : (faites.length ? `<details class="faites"${ouvert ? ' open' : ''}><summary>Terminées (${faites.length})</summary>${ul(faites)}</details>` : '')
+          + (restes.length ? `<p class="section">En cours</p>${ul(restes.slice(0, 1))}` + (restes.length > 1 ? `<p class="section">À venir</p>${ul(restes.slice(1))}` : '')
+            : '<p class="vide">Toutes les étapes sont terminées.</p>');
+      v.innerHTML = `${bloc}
         <form id="f"><h2>${edit >= 0 ? 'Modifier l’étape' : 'Nouvelle étape'}</h2>
         <label for="n">Combien de rangs ? (0 = à faire tout de suite)</label><input type="number" id="n" min="0" value="${e0.longueur}" required>
         <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}" required>
@@ -190,7 +199,9 @@ async function project(id) {
         p.steps.splice(i, 1); edit = -1;
         save({ steps: p.steps, rangs: p.rangs, debut: p.debut, jour: iso(new Date()) }); draw();
       });
-      v.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { edit = +b.dataset.m; draw(); $('#f').scrollIntoView({ behavior: 'smooth' }); });
+      v.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { edit = +b.dataset.m; if (p.steps[edit].fait) ouvert = true; draw(); $('#f').scrollIntoView({ behavior: 'smooth' }); });
+      const det = v.querySelector('details.faites');
+      if (det) det.ontoggle = () => { ouvert = det.open; };
       const bouger = (i, d) => { [p.steps[i], p.steps[i + d]] = [p.steps[i + d], p.steps[i]]; edit = -1; save({ steps: p.steps }); draw(); };
       v.querySelectorAll('button[data-haut]').forEach(b => b.onclick = () => bouger(+b.dataset.haut, -1));
       v.querySelectorAll('button[data-bas]').forEach(b => b.onclick = () => bouger(+b.dataset.bas, 1));
