@@ -15,7 +15,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects(
   created_at TEXT DEFAULT CURRENT_TIMESTAMP)`);
 const have = db.prepare('PRAGMA table_info(projects)').all().map(c => c.name);
 for (const [c, d] of [['user_id', 'INTEGER'], ['objectif', 'INTEGER NOT NULL DEFAULT 0'], ['steps', "TEXT NOT NULL DEFAULT '[]'"],
-  ['statut', "TEXT NOT NULL DEFAULT 'en_cours'"], ['extras', 'INTEGER NOT NULL DEFAULT 0'], ['compteurs', "TEXT NOT NULL DEFAULT '[]'"], ['debut', 'INTEGER NOT NULL DEFAULT 0']])
+  ['statut', "TEXT NOT NULL DEFAULT 'en_cours'"], ['extras', 'INTEGER NOT NULL DEFAULT 0'], ['compteurs', "TEXT NOT NULL DEFAULT '[]'"], ['debut', 'INTEGER NOT NULL DEFAULT 0'],
+  ['rayures', 'INTEGER NOT NULL DEFAULT 0'], ['detail_on', 'INTEGER NOT NULL DEFAULT 0'], ['detail_boucle', 'INTEGER NOT NULL DEFAULT 1'], ['detail', "TEXT NOT NULL DEFAULT ''"]])
   if (!have.includes(c)) db.exec(`ALTER TABLE projects ADD COLUMN ${c} ${d}`);
 db.exec('CREATE TABLE IF NOT EXISTS activity(project_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(project_id, day))');
 db.exec(`CREATE TABLE IF NOT EXISTS users(
@@ -130,19 +131,21 @@ app.get('/api/projects/:id', (q, r) => {
 });
 
 const STATUTS = ['en_cours', 'pause', 'termine'];
+const flag = v => v == null ? null : +!!v;
 const int = v => v != null ? Math.max(0, parseInt(v, 10) || 0) : null;
 const cleanSteps = s => Array.isArray(s) ? JSON.stringify(s.slice(0, 100).map(x => ({ longueur: int(x.longueur) ?? 1, repetitions: Math.min(99, Math.max(1, int(x.repetitions) || 1)), faites: int(x.faites) || 0, texte: String(x.texte || '').slice(0, 200), fait: !!x.fait }))) : null;
 const cleanCompteurs = c => Array.isArray(c) ? JSON.stringify(c.slice(0, 20).map(x => ({ nom: String(x.nom || '').slice(0, 60), valeur: int(x.valeur) ?? 0 }))) : null;
 app.patch('/api/projects/:id', (q, r) => {
   const cur = mine(q);
   if (!cur) return r.sendStatus(404);
-  const { name, rangs, materials, objectif, steps, statut, extras, compteurs, jour, debut } = q.body;
+  const { name, rangs, materials, objectif, steps, statut, extras, compteurs, jour, debut, rayures, detail_on, detail_boucle, detail } = q.body;
   const nr = int(rangs);
   db.prepare(`UPDATE projects SET name=COALESCE(?,name), rangs=COALESCE(?,rangs), materials=COALESCE(?,materials),
               objectif=COALESCE(?,objectif), steps=COALESCE(?,steps), statut=COALESCE(?,statut),
-              extras=COALESCE(?,extras), compteurs=COALESCE(?,compteurs), debut=COALESCE(?,debut) WHERE id=? AND user_id=?`)
+              extras=COALESCE(?,extras), compteurs=COALESCE(?,compteurs), debut=COALESCE(?,debut), rayures=COALESCE(?,rayures), detail_on=COALESCE(?,detail_on),
+              detail_boucle=COALESCE(?,detail_boucle), detail=COALESCE(?,detail) WHERE id=? AND user_id=?`)
     .run(name?.trim() || null, nr, materials ?? null, int(objectif), cleanSteps(steps),
-         STATUTS.includes(statut) ? statut : null, extras == null ? null : +!!extras, cleanCompteurs(compteurs), int(debut), q.pid, q.user.id);
+         STATUTS.includes(statut) ? statut : null, extras == null ? null : +!!extras, cleanCompteurs(compteurs), int(debut), int(rayures), flag(detail_on), flag(detail_boucle), detail == null ? null : String(detail).slice(0, 5000), q.pid, q.user.id);
   if (nr != null && nr !== cur.rangs) {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(jour || '') ? jour : new Date().toISOString().slice(0, 10);
     db.prepare(`INSERT INTO activity(project_id,day,n) VALUES(?,?,MAX(0,?))
@@ -191,6 +194,8 @@ app.get('/api/projects/:id/export', (q, r) => {
   const txt = [`Projet : ${p.name}`, `Rangs tricotés : ${p.rangs}${p.objectif ? ' / ' + p.objectif : ''}`, '',
     'Matériel :', p.materials || '(non renseigné)', '', 'Étapes :',
     ...(steps.length ? steps.map(s => `- ${s.longueur != null ? (s.longueur ? s.longueur + ' rangs puis ' : 'tout de suite : ') : 'rang ' + s.rang + ' : '}${s.texte}${s.repetitions > 1 ? ' (x' + s.repetitions + ')' : ''}${s.fait ? ' (fait)' : ''}`) : ['(aucune)']),
+    ...(p.rayures ? ['', 'Rayures : changement de couleur tous les ' + p.rayures + ' rangs'] : []),
+    ...(p.detail_on && p.detail ? ['', 'Rangs détaillés :', ...p.detail.split('\n')] : []),
     '', p.pattern_name ? 'Patron : ' + p.pattern_name : 'Patron : aucun'].join('\r\n');
   r.attachment(p.name.replace(/[\/\\:*?"<>|]/g, '-') + '.zip');
   const z = archiver('zip');

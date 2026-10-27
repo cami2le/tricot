@@ -72,13 +72,20 @@ async function project(id) {
   const v = $('#v');
 
   if (tab === 'compteur') {
-    v.innerHTML = `<div class="compteur"><div class="suivi" id="suivi"></div><p id="chiffre" aria-live="polite"></p><div id="etape" style="width:100%"></div>
+    v.innerHTML = `<div class="compteur"><div class="suivi" id="suivi"></div><p id="chiffre" aria-live="polite"></p><div id="rayures" style="width:100%"></div><div id="detail" style="width:100%"></div><div id="etape" style="width:100%"></div>
       <div class="boutons"><button class="rond moins" id="moins" aria-label="Enlever un rang">−</button>
       <button class="rond" id="plus" aria-label="Ajouter un rang">+</button></div>
       <button class="pill ghost" id="reset">Remise à 0</button><div id="extras" class="extras"></div></div>`;
     const paint = () => {
       const n = Math.max(0, p.rangs - p.debut), pend = p.steps.filter(x => !x.fait), s = pend[0];
       $('#chiffre').textContent = n;
+      const X = p.rayures, reste = X ? X - p.rangs % X : 0;
+      $('#rayures').innerHTML = !X ? '' : p.rangs > 0 && p.rangs % X === 0
+        ? '<div class="alerte centre"><b>Changement de couleur !</b></div>'
+        : `<div class="prochain"><small>Changement de couleur dans ${reste} rang${reste > 1 ? 's' : ''}</small></div>`;
+      const L = p.detail_on ? p.detail.split('\n').map(x => x.trim()).filter(Boolean) : [];
+      const ligne = k => !L.length ? null : p.detail_boucle ? L[k % L.length] : L[k];
+      $('#detail').innerHTML = ligne(n) == null ? '' : `<div class="detail"><small>Rang ${n + 1}</small><b>${esc(ligne(n))}</b>${ligne(n + 1) != null ? `<small>Ensuite : ${esc(ligne(n + 1))}</small>` : ''}</div>`;
       $('#suivi').innerHTML = p.objectif
         ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div><small>Total : ${p.rangs} / ${p.objectif} rangs</small>`
         : p.debut ? `<small>Total : ${p.rangs} rangs</small>` : '';
@@ -167,6 +174,11 @@ async function project(id) {
     const a = p.pattern_name;
     v.innerHTML = `<label for="nom">Nom du projet</label><input type="text" id="nom" value="${esc(p.name)}">
       <label for="obj">Objectif de rangs (0 = aucun)</label><input type="number" id="obj" min="0" value="${p.objectif}">
+      <label for="ray">Rayures : changer de couleur tous les … rangs (0 = désactivé)</label><input type="number" id="ray" min="0" value="${p.rayures}">
+      <label class="ligne"><input type="checkbox" id="dt" ${p.detail_on ? 'checked' : ''}> Rangs détaillés</label>
+      <div id="dwrap" ${p.detail_on ? '' : 'hidden'}><label for="dl">Une ligne par rang : la 1re ligne pour le rang 1, la 2e pour le rang 2…</label>
+      <textarea id="dl">${esc(p.detail)}</textarea>
+      <label class="ligne"><input type="checkbox" id="db" ${p.detail_boucle ? 'checked' : ''}> Recommencer au rang 1 après la dernière ligne</label></div>
       <label for="st">Statut</label><select id="st">${[['en_cours', 'En cours'], ['pause', 'En pause'], ['termine', 'Terminé']].map(([k, l]) => `<option value="${k}" ${p.statut === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <label class="ligne"><input type="checkbox" id="ex" ${p.extras ? 'checked' : ''}> Compteurs supplémentaires pour ce projet</label>
       <label for="mat">Matériel (laine, aiguilles, tension, coloris…)</label><textarea id="mat">${esc(p.materials)}</textarea>
@@ -181,6 +193,10 @@ async function project(id) {
       p.name = e.target.value.trim(); $('#titre').textContent = p.name; save({ name: p.name });
     };
     $('#obj').onchange = e => { p.objectif = Math.max(0, parseInt(e.target.value, 10) || 0); e.target.value = p.objectif; save({ objectif: p.objectif }); };
+    $('#ray').onchange = e => { p.rayures = Math.max(0, parseInt(e.target.value, 10) || 0); e.target.value = p.rayures; save({ rayures: p.rayures }); };
+    $('#dt').onchange = e => { p.detail_on = e.target.checked ? 1 : 0; $('#dwrap').hidden = !e.target.checked; save({ detail_on: p.detail_on }); };
+    $('#dl').onchange = e => { p.detail = e.target.value; save({ detail: p.detail }); };
+    $('#db').onchange = e => { p.detail_boucle = e.target.checked ? 1 : 0; save({ detail_boucle: p.detail_boucle }); };
     $('#st').onchange = e => { p.statut = e.target.value; save({ statut: p.statut }); };
     $('#ex').onchange = e => { p.extras = e.target.checked; save({ extras: p.extras }); };
     $('#mat').onchange = e => save({ materials: e.target.value });

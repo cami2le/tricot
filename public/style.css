@@ -66,3 +66,6 @@ textarea{min-height:7rem}
 @media(prefers-reduced-motion:reduce){.onde,.pouf{animation:none}}
 .prochain .barre{margin:.5rem 0}
 .etapes li{flex-wrap:wrap}.etapes li.edit{outline:2px solid var(--violet)}.etapes .pill{padding:.4rem .8rem;font-size:.95rem}
+[hidden]{display:none!important}.alerte.centre{justify-content:center}
+.detail{background:var(--carte);border-radius:1rem;padding:.8rem 1rem;text-align:left;display:flex;flex-direction:column;gap:.2rem}
+.detail b{font-weight:normal;font-size:1.25rem;white-space:pre-wrap}
