@@ -90,3 +90,4 @@ details.faites .etapes li{background:var(--fond);text-decoration:none;opacity:.8
 .section{font-size:.95rem;opacity:.7;margin:1rem 0 .5rem}
 .etapes li.courante{border-left:4px solid var(--violet)}
 .etapes li .barre{flex-basis:100%}
+.consigne{display:block;font-weight:normal;font-size:1.15rem;margin:.2rem 0 .4rem}

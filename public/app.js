@@ -62,8 +62,13 @@ async function project(id) {
     save({ steps: p.steps, debut: p.debut });
   }
   p.steps.forEach(s => { s.repetitions ||= 1; s.faites ||= 0; });
-  const titre = s => s.longueur === 0 ? `Tout de suite : ${s.texte}${s.repetitions > 1 ? ` (${s.repetitions} fois)` : ''}`
-    : s.repetitions > 1 ? `Tous les ${s.longueur} rangs : ${s.texte} (${s.repetitions} fois)` : `${s.longueur} rangs, puis : ${s.texte}`;
+  // titre d'une étape : le « puis » est facultatif
+  const titre = s => {
+    const r = s.repetitions > 1 ? ` (${s.repetitions} fois)` : '', t = s.texte;
+    if (s.longueur === 0) return `Tout de suite${t ? ' : ' + t : ''}${r}`;
+    if (!t) return `${s.longueur} rangs${r}`;
+    return s.repetitions > 1 ? `Tous les ${s.longueur} rangs : ${t}${r}` : `${s.longueur} rangs, puis : ${t}`;
+  };
   const T = [['compteur', 'Compteur'], ['etapes', 'Étapes'], ['stats', 'Stats'], ['infos', 'Infos']];
   const W = large(), TT = W ? T.slice(1) : T;
   if (W && tab === 'compteur') tab = 'etapes';
@@ -93,16 +98,19 @@ async function project(id) {
       $('#suivi').innerHTML = p.objectif
         ? `<div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div><small>Total : ${p.rangs} / ${p.objectif} rangs</small>`
         : p.debut ? `<small>Total : ${p.rangs} rangs</small>` : '';
+      const quoi = s && (s.texte || (!s.longueur && s.description));   // consigne affichée dans l'alerte de fin d'étape
       $('#etape').innerHTML = !s ? '' : n >= s.longueur
-        ? `<div class="alerte"><b>${s.longueur ? s.longueur + ' rangs faits : ' : 'À faire maintenant : '}${esc(s.texte)}</b><button class="pill" id="fait">${s.faites + 1 < s.repetitions ? 'Répétition suivante' : 'Étape suivante'}</button></div>`
+        ? `<div class="alerte"><b>${s.longueur ? s.longueur + ' rangs faits' : 'À faire maintenant'}${quoi ? ' : ' + esc(quoi) : ''}</b><button class="pill" id="fait">${s.faites + 1 < s.repetitions ? 'Répétition suivante' : 'Étape suivante'}</button></div>`
         : `<div class="prochain"><small>${s.repetitions > 1 ? `Répétition ${s.faites + 1} / ${s.repetitions}` : 'Étape en cours'} : ${n} / ${s.longueur} rangs</small>
             <div class="barre"><i style="width:${Math.round(n / s.longueur * 100)}%"></i></div>
-            <small>Puis : ${esc(s.texte)}</small></div>`;
+            ${s.description ? `<b class="consigne">${esc(s.description)}</b>` : ''}
+            ${s.texte ? `<small>Puis : ${esc(s.texte)}</small>` : ''}</div>`;
       const valider = () => { s.compte = (s.compte ?? s.longueur * s.faites) + n; s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
       if ($('#fait')) $('#fait').onclick = valider;
       if ($('#f-chiffre')) {   // mode concentration : chiffre + consigne du rang + alertes seulement quand elles se déclenchent
         $('#f-chiffre').textContent = n;
-        $('#f-info').innerHTML = ($('#rayures .alerte')?.outerHTML || '') + ($('#etape .alerte')?.outerHTML.replace('id="fait"', 'id="f-fait"') || '') + $('#detail').innerHTML;
+        $('#f-info').innerHTML = ($('#rayures .alerte')?.outerHTML || '') + ($('#etape .alerte')?.outerHTML.replace('id="fait"', 'id="f-fait"') || '') + $('#detail').innerHTML
+          + (s?.description && n < s.longueur ? `<div class="detail"><small>Étape en cours</small><b>${esc(s.description)}</b></div>` : '');
         if ($('#f-fait')) $('#f-fait').onclick = valider;
       }
     };
@@ -170,10 +178,10 @@ async function project(id) {
   } else if (tab === 'etapes') {
     let edit = -1, ouvert = false;
     const draw = () => {
-      const cur = p.steps.findIndex(x => !x.fait), e0 = p.steps[edit] || { longueur: 10, texte: '', repetitions: 1 };
+      const cur = p.steps.findIndex(x => !x.fait), e0 = p.steps[edit] || { longueur: 10, texte: '', description: '', repetitions: 1 };
       const n = Math.max(0, p.rangs - p.debut), paires = p.steps.map((s, i) => [s, i]);
       const faites = paires.filter(([s]) => s.fait), restes = paires.filter(([s]) => !s.fait);
-      const item = (s, i) => `<li class="${s.fait ? 'fait' : ''}${i === cur ? ' courante' : ''}${i === edit ? ' edit' : ''}"><span><b>${esc(titre(s))}</b><br>
+      const item = (s, i) => `<li class="${s.fait ? 'fait' : ''}${i === cur ? ' courante' : ''}${i === edit ? ' edit' : ''}"><span><b>${esc(titre(s))}</b>${s.description ? `<br><small>Pendant : ${esc(s.description)}</small>` : ''}<br>
         <small>${s.fait ? 'Fait' : i === cur ? `En cours : ${s.repetitions > 1 ? 'répétition ' + (s.faites + 1) + '/' + s.repetitions + ', ' : ''}${n} / ${s.longueur} rangs` : 'À venir'}</small></span>
         <span class="row"><button class="pill ghost fleche" data-haut="${i}" aria-label="Monter" ${i === 0 || p.steps[i - 1].fait !== s.fait ? 'disabled' : ''}>▲</button><button class="pill ghost fleche" data-bas="${i}" aria-label="Descendre" ${i === p.steps.length - 1 || p.steps[i + 1].fait !== s.fait ? 'disabled' : ''}>▼</button><button class="pill clair" data-dup="${i}">Dupliquer</button><button class="pill clair" data-m="${i}">Modifier</button><button class="pill ghost" data-i="${i}">Supprimer</button></span>
         ${i === cur ? `<div class="barre"><i style="width:${s.longueur ? Math.min(100, Math.round(n / s.longueur * 100)) : 100}%"></i></div>` : ''}</li>`;
@@ -185,7 +193,8 @@ async function project(id) {
       v.innerHTML = `${bloc}
         <form id="f"><h2>${edit >= 0 ? 'Modifier l’étape' : 'Nouvelle étape'}</h2>
         <label for="n">Combien de rangs ? (0 = à faire tout de suite)</label><input type="number" id="n" min="0" value="${e0.longueur}" required>
-        <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}" required>
+        <label for="desc">Pendant ces rangs (facultatif, ex. côtes 2/2)</label><input type="text" id="desc" value="${esc(e0.description)}">
+        <label for="t">Puis quoi faire ? (facultatif, ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}">
         <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="${e0.repetitions}" required>
         <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>`;
       v.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => {
@@ -212,7 +221,7 @@ async function project(id) {
       $('#f').onsubmit = ev => {
         ev.preventDefault();
         const l = parseInt($('#n').value, 10), r = parseInt($('#r').value, 10);
-        const d = { longueur: Number.isNaN(l) ? 1 : Math.max(0, l), texte: $('#t').value.trim(), repetitions: Math.min(99, Math.max(1, r || 1)) };
+        const d = { longueur: Number.isNaN(l) ? 1 : Math.max(0, l), texte: $('#t').value.trim(), description: $('#desc').value.trim(), repetitions: Math.min(99, Math.max(1, r || 1)) };
         if (edit >= 0) { const s = p.steps[edit]; Object.assign(s, d); if (!s.fait) s.faites = Math.min(s.faites, d.repetitions - 1); }
         else p.steps.push({ ...d, faites: 0, fait: false });
         edit = -1; save({ steps: p.steps }); draw();
