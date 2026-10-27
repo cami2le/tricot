@@ -79,7 +79,7 @@ async function project(id) {
     v.innerHTML = `<div class="compteur"><div class="suivi" id="suivi"></div><p id="chiffre" aria-live="polite"></p><div id="rayures" style="width:100%"></div><div id="detail" style="width:100%"></div><div id="etape" style="width:100%"></div>
       <div class="boutons"><button class="rond moins" id="moins" aria-label="Enlever un rang">−</button>
       <button class="rond" id="plus" aria-label="Ajouter un rang">+</button></div>
-      <button class="pill ghost" id="reset">Remise à 0</button><div id="extras" class="extras"></div></div>`;
+      <div class="row" style="justify-content:center"><button class="pill ghost" id="reset">Remise à 0</button><button class="pill clair" id="conc">Mode concentration</button></div><div id="extras" class="extras"></div></div>`;
     const paint = () => {
       const n = Math.max(0, p.rangs - p.debut), pend = p.steps.filter(x => !x.fait), s = pend[0];
       $('#chiffre').textContent = n;
@@ -98,7 +98,13 @@ async function project(id) {
         : `<div class="prochain"><small>${s.repetitions > 1 ? `Répétition ${s.faites + 1} / ${s.repetitions}` : 'Étape en cours'} : ${n} / ${s.longueur} rangs</small>
             <div class="barre"><i style="width:${Math.round(n / s.longueur * 100)}%"></i></div>
             <small>Puis : ${esc(s.texte)}</small></div>`;
-      if ($('#fait')) $('#fait').onclick = () => { s.compte = (s.compte ?? s.longueur * s.faites) + n; s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
+      const valider = () => { s.compte = (s.compte ?? s.longueur * s.faites) + n; s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
+      if ($('#fait')) $('#fait').onclick = valider;
+      if ($('#f-chiffre')) {   // mode concentration : chiffre + consigne du rang + alertes seulement quand elles se déclenchent
+        $('#f-chiffre').textContent = n;
+        $('#f-info').innerHTML = ($('#rayures .alerte')?.outerHTML || '') + ($('#etape .alerte')?.outerHTML.replace('id="fait"', 'id="f-fait"') || '') + $('#detail').innerHTML;
+        if ($('#f-fait')) $('#f-fait').onclick = valider;
+      }
     };
     const set = n => { p.rangs = Math.max(0, n); save({ rangs: p.rangs, jour: iso(new Date()) }); paint(); };
     const tap = (b, n) => {
@@ -134,6 +140,17 @@ async function project(id) {
     paint();
     drawExtras();
     maj = paint; majExtras = drawExtras;
+    $('#conc').onclick = () => {
+      const o = document.createElement('div');
+      o.id = 'focus';
+      o.innerHTML = `<button class="pill ghost" id="quitter">Quitter</button><div id="f-info"></div><p id="f-chiffre"></p>
+        <div class="boutons"><button class="rond moins" id="f-moins" aria-label="Enlever un rang">−</button><button class="rond" id="f-plus" aria-label="Ajouter un rang">+</button></div>`;
+      document.body.appendChild(o);
+      $('#f-plus').onclick = e => tap(e.currentTarget, p.rangs + 1);
+      $('#f-moins').onclick = e => { if (p.rangs > p.debut) tap(e.currentTarget, p.rangs - 1); };
+      $('#quitter').onclick = () => o.remove();
+      paint();
+    };
   } else if (tab === 'stats') {
     v.innerHTML = '<p class="vide">Chargement…</p>';
     const rows = await api(`/api/projects/${id}/stats`);
@@ -152,16 +169,18 @@ async function project(id) {
       : '<p class="vide">Les statistiques se remplissent à partir de maintenant : compte quelques rangs et reviens ici.</p>';
   } else if (tab === 'etapes') {
     let edit = -1;
+    const autres = (await api('/api/projects')).filter(x => x.id !== id);
     const draw = () => {
       const cur = p.steps.findIndex(x => !x.fait), e0 = p.steps[edit] || { longueur: 10, texte: '', repetitions: 1 };
       v.innerHTML = `<ul class="etapes">${p.steps.map((s, i) => `<li class="${s.fait ? 'fait' : ''}${i === edit ? ' edit' : ''}"><span><b>${esc(titre(s))}</b><br>
         <small>${s.fait ? 'Fait' : i === cur ? `En cours : ${s.repetitions > 1 ? 'répétition ' + (s.faites + 1) + '/' + s.repetitions + ', ' : ''}${Math.max(0, p.rangs - p.debut)} / ${s.longueur} rangs` : 'À venir'}</small></span>
-        <span class="row"><button class="pill clair" data-m="${i}">Modifier</button><button class="pill ghost" data-i="${i}">Supprimer</button></span></li>`).join('') || '<li class="vide">Aucune étape pour l’instant.</li>'}</ul>
+        <span class="row"><button class="pill ghost fleche" data-haut="${i}" aria-label="Monter" ${i === 0 || p.steps[i - 1].fait !== s.fait ? 'disabled' : ''}>▲</button><button class="pill ghost fleche" data-bas="${i}" aria-label="Descendre" ${i === p.steps.length - 1 || p.steps[i + 1].fait !== s.fait ? 'disabled' : ''}>▼</button><button class="pill clair" data-dup="${i}">Dupliquer</button><button class="pill clair" data-m="${i}">Modifier</button><button class="pill ghost" data-i="${i}">Supprimer</button></span></li>`).join('') || '<li class="vide">Aucune étape pour l’instant.</li>'}</ul>
         <form id="f"><h2>${edit >= 0 ? 'Modifier l’étape' : 'Nouvelle étape'}</h2>
         <label for="n">Combien de rangs ? (0 = à faire tout de suite)</label><input type="number" id="n" min="0" value="${e0.longueur}" required>
         <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}" required>
         <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="${e0.repetitions}" required>
-        <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>`;
+        <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>${autres.length ? `<h2>Copier depuis un autre projet</h2>
+        <div class="row" style="margin-top:.6rem"><select id="src">${autres.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="pill clair" id="copier">Copier ses étapes</button></div>` : ''}`;
       v.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => {
         const i = +b.dataset.i, s = p.steps[i], courante = i === p.steps.findIndex(x => !x.fait), n = Math.max(0, p.rangs - p.debut);
         const avant = s.compte ?? s.longueur * (s.fait ? s.repetitions : s.faites);   // rangs des répétitions déjà terminées
@@ -172,6 +191,20 @@ async function project(id) {
         save({ steps: p.steps, rangs: p.rangs, debut: p.debut, jour: iso(new Date()) }); draw();
       });
       v.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { edit = +b.dataset.m; draw(); $('#f').scrollIntoView({ behavior: 'smooth' }); });
+      const bouger = (i, d) => { [p.steps[i], p.steps[i + d]] = [p.steps[i + d], p.steps[i]]; edit = -1; save({ steps: p.steps }); draw(); };
+      v.querySelectorAll('button[data-haut]').forEach(b => b.onclick = () => bouger(+b.dataset.haut, -1));
+      v.querySelectorAll('button[data-bas]').forEach(b => b.onclick = () => bouger(+b.dataset.bas, 1));
+      v.querySelectorAll('button[data-dup]').forEach(b => b.onclick = () => {
+        const i = +b.dataset.dup, { compte, ...src } = p.steps[i], f = p.steps.findIndex(x => !x.fait);
+        p.steps.splice(src.fait ? (f < 0 ? p.steps.length : f) : i + 1, 0, { ...src, faites: 0, fait: false });
+        edit = -1; save({ steps: p.steps }); draw();
+      });
+      if ($('#copier')) $('#copier').onclick = async () => {
+        const o = await api('/api/projects/' + $('#src').value);
+        if (!o.steps.length) return alert('Ce projet n’a pas encore d’étapes.');
+        o.steps.forEach(s => p.steps.push({ longueur: s.longueur ?? 1, texte: s.texte, repetitions: s.repetitions || 1, faites: 0, fait: false }));
+        save({ steps: p.steps }); draw();
+      };
       if ($('#annuler')) $('#annuler').onclick = () => { edit = -1; draw(); };
       $('#f').onsubmit = ev => {
         ev.preventDefault();
@@ -275,6 +308,7 @@ function loginView() {
 }
 
 async function route() {
+  document.getElementById('focus')?.remove();
   try {
     if (!me?.user) me = await api('/api/me');
     if (!me.user) return loginView();
