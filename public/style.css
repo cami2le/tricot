@@ -76,13 +76,23 @@ textarea{min-height:7rem}
 }
 button:disabled{opacity:.35;cursor:default}
 .etapes .row{gap:.4rem}.etapes .pill.fleche{padding:.4rem .7rem}
-#focus{position:fixed;inset:0;z-index:50;background:var(--fond);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;padding:env(safe-area-inset-top) 1.25rem env(safe-area-inset-bottom);overflow:auto}
-#focus #quitter{position:absolute;top:calc(env(safe-area-inset-top) + 1rem);right:1.25rem}
-#f-info{width:min(100%,34rem);display:flex;flex-direction:column;gap:.8rem;text-align:center}
-#f-info:empty{display:none}
-#f-chiffre{font-size:clamp(8rem,38vh,16rem);line-height:1;margin:0;font-variant-numeric:tabular-nums}
-#focus .rond{width:clamp(7.5rem,24vh,12rem);height:clamp(7.5rem,24vh,12rem);font-size:clamp(4rem,12vh,7rem)}
+/* mode concentration : progression en haut, chiffre au centre, boutons en bas (à portée de pouce) */
+#focus{position:fixed;inset:0;z-index:50;background:var(--fond);display:flex;flex-direction:column;align-items:center;gap:1rem;padding:calc(env(safe-area-inset-top) + 1rem) 1.25rem calc(env(safe-area-inset-bottom) + 1.5rem);overflow:auto}
+#focus>*{width:min(100%,34rem)}
+.f-haut{display:flex;align-items:center;gap:1rem}
+#f-prog{flex:1;min-width:0}
+#f-prog small{display:block;opacity:.75}
+#f-prog .barre{height:.5rem;margin-top:.35rem}
+.f-milieu{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem}
+#f-alertes,#f-info{width:100%;display:flex;flex-direction:column;gap:.6rem;text-align:center}
+#f-alertes:empty,#f-info:empty{display:none}
+#f-info small{opacity:.7}
+#f-chiffre{font-size:clamp(7rem,30vh,14rem);line-height:1;margin:0;font-variant-numeric:tabular-nums}
+#focus .consigne{font-size:1.5rem;margin:0}
+#focus .detail{text-align:center}
 #focus .detail b{font-size:1.6rem}
+#focus .boutons{justify-content:center}
+#focus .rond{width:clamp(7rem,22vh,11rem);height:clamp(7rem,22vh,11rem);font-size:clamp(4rem,11vh,6.5rem)}
 details.faites{background:var(--carte);border-radius:1rem;padding:.2rem .8rem;margin-bottom:1rem}
 details.faites summary{cursor:pointer;padding:.6rem 0;opacity:.85}
 details.faites .etapes{margin-top:.4rem}

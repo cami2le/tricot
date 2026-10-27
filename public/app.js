@@ -107,10 +107,16 @@ async function project(id) {
             ${s.texte ? `<small>Puis : ${esc(s.texte)}</small>` : ''}</div>`;
       const valider = () => { s.compte = (s.compte ?? s.longueur * s.faites) + n; s.faites++; if (s.faites >= s.repetitions) s.fait = true; p.debut = p.rangs; save({ steps: p.steps, debut: p.debut }); paint(); };
       if ($('#fait')) $('#fait').onclick = valider;
-      if ($('#f-chiffre')) {   // mode concentration : chiffre + consigne du rang + alertes seulement quand elles se déclenchent
+      if ($('#f-chiffre')) {   // mode concentration : progression en haut, alertes + chiffre + consignes au centre, boutons en bas
+        const enCours = s && n < s.longueur;
         $('#f-chiffre').textContent = n;
-        $('#f-info').innerHTML = ($('#rayures .alerte')?.outerHTML || '') + ($('#etape .alerte')?.outerHTML.replace('id="fait"', 'id="f-fait"') || '') + $('#detail').innerHTML
-          + (s?.description && n < s.longueur ? `<div class="detail"><small>Étape en cours</small><b>${esc(s.description)}</b></div>` : '');
+        $('#f-prog').innerHTML = enCours
+          ? `<small>${s.repetitions > 1 ? `Répétition ${s.faites + 1} / ${s.repetitions} · ` : ''}${n} / ${s.longueur} rangs</small><div class="barre"><i style="width:${Math.round(n / s.longueur * 100)}%"></i></div>`
+          : p.objectif ? `<small>Total : ${p.rangs} / ${p.objectif} rangs</small><div class="barre"><i style="width:${Math.min(100, Math.round(p.rangs / p.objectif * 100))}%"></i></div>`
+          : `<small>Total : ${p.rangs} rangs</small>`;
+        $('#f-alertes').innerHTML = ($('#rayures .alerte')?.outerHTML || '') + ($('#etape .alerte')?.outerHTML.replace('id="fait"', 'id="f-fait"') || '');
+        $('#f-info').innerHTML = (enCours && s.description ? `<b class="consigne">${esc(s.description)}</b>` : '') + $('#detail').innerHTML
+          + (X && !$('#rayures .alerte') ? `<small>Changement de couleur dans ${reste} rang${reste > 1 ? 's' : ''}</small>` : '');
         if ($('#f-fait')) $('#f-fait').onclick = valider;
       }
     };
@@ -151,7 +157,8 @@ async function project(id) {
     $('#conc').onclick = () => {
       const o = document.createElement('div');
       o.id = 'focus';
-      o.innerHTML = `<button class="pill ghost" id="quitter">Quitter</button><div id="f-info"></div><p id="f-chiffre"></p>
+      o.innerHTML = `<div class="f-haut"><div id="f-prog"></div><button class="pill ghost" id="quitter">Quitter</button></div>
+        <div class="f-milieu"><div id="f-alertes"></div><p id="f-chiffre" aria-live="polite"></p><div id="f-info"></div></div>
         <div class="boutons"><button class="rond moins" id="f-moins" aria-label="Enlever un rang">−</button><button class="rond" id="f-plus" aria-label="Ajouter un rang">+</button></div>`;
       document.body.appendChild(o);
       $('#f-plus').onclick = e => tap(e.currentTarget, p.rangs + 1);
