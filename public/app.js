@@ -169,7 +169,6 @@ async function project(id) {
       : '<p class="vide">Les statistiques se remplissent à partir de maintenant : compte quelques rangs et reviens ici.</p>';
   } else if (tab === 'etapes') {
     let edit = -1, ouvert = false;
-    const autres = (await api('/api/projects')).filter(x => x.id !== id);
     const draw = () => {
       const cur = p.steps.findIndex(x => !x.fait), e0 = p.steps[edit] || { longueur: 10, texte: '', repetitions: 1 };
       const n = Math.max(0, p.rangs - p.debut), paires = p.steps.map((s, i) => [s, i]);
@@ -188,8 +187,7 @@ async function project(id) {
         <label for="n">Combien de rangs ? (0 = à faire tout de suite)</label><input type="number" id="n" min="0" value="${e0.longueur}" required>
         <label for="t">Puis quoi faire ? (ex. 1 diminution)</label><input type="text" id="t" value="${esc(e0.texte)}" required>
         <label for="r">Combien de fois le répéter ? (1 = une seule fois)</label><input type="number" id="r" min="1" max="99" value="${e0.repetitions}" required>
-        <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>${autres.length ? `<h2>Copier depuis un autre projet</h2>
-        <div class="row" style="margin-top:.6rem"><select id="src">${autres.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="pill clair" id="copier">Copier ses étapes</button></div>` : ''}`;
+        <div class="row" style="margin-top:1rem"><button class="pill">${edit >= 0 ? 'Enregistrer' : 'Ajouter l’étape'}</button>${edit >= 0 ? '<button type="button" class="pill ghost" id="annuler">Annuler</button>' : ''}</div></form>`;
       v.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => {
         const i = +b.dataset.i, s = p.steps[i], courante = i === p.steps.findIndex(x => !x.fait), n = Math.max(0, p.rangs - p.debut);
         const avant = s.compte ?? s.longueur * (s.fait ? s.repetitions : s.faites);   // rangs des répétitions déjà terminées
@@ -210,12 +208,6 @@ async function project(id) {
         p.steps.splice(src.fait ? (f < 0 ? p.steps.length : f) : i + 1, 0, { ...src, faites: 0, fait: false });
         edit = -1; save({ steps: p.steps }); draw();
       });
-      if ($('#copier')) $('#copier').onclick = async () => {
-        const o = await api('/api/projects/' + $('#src').value);
-        if (!o.steps.length) return alert('Ce projet n’a pas encore d’étapes.');
-        o.steps.forEach(s => p.steps.push({ longueur: s.longueur ?? 1, texte: s.texte, repetitions: s.repetitions || 1, faites: 0, fait: false }));
-        save({ steps: p.steps }); draw();
-      };
       if ($('#annuler')) $('#annuler').onclick = () => { edit = -1; draw(); };
       $('#f').onsubmit = ev => {
         ev.preventDefault();
